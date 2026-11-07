@@ -77,9 +77,9 @@ If the drone doesn't move, the velocity controller may need enabling:
 - Bare words match anywhere in the sentence ("that's all right" -> `right`).
 - Silence is skipped before Whisper (`SILENCE_RMS` in `config.py`) because Whisper can hallucinate text on silence.
 - The trail is drawn with Gazebo visual markers, so it only shows in the Gazebo GUI window.
-
+py
 ## Experimental: strict matcher
-`matcher_strict.py` only accepts complete, approved requests (work in progress). To try it:
+`matcher_strict.py` only accepts complete, approved requests. To try it:
 
     .venv/bin/python3 -B test_safety_matcher.py
     .venv/bin/python3 app_strict.py --no-ros
