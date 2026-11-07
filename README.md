@@ -19,7 +19,7 @@ into velocity commands for a simulated Gazebo quadcopter, which can also draw gl
 | `matcher.py` | Whitelist matching (pure Python). `python3 matcher.py` lets you type phrases to test. |
 | `recorder.py` / `transcriber.py` | Mic capture / Whisper (faster-whisper by default). |
 | `sinks.py` | Output: JSON files (always) + ROS 2 publisher (if rclpy is available). |
-| `app.py` | The GUI. Run this. |
+| `app.py` | The GUI.|
 | `drone_adapter.py` | ROS 2 node: voice JSON -> `geometry_msgs/Twist`. The only drone-specific file. |
 | `gz_trail.py` | Optional Gazebo trail effect, used by `drone_adapter.py` when the Gazebo Python bindings are installed. |
 | `run_demo.sh` | Launches sim, bridge, adapter and GUI in one go. |
@@ -74,10 +74,9 @@ If the drone doesn't move, the velocity controller may need enabling:
 
 ## Notes
 - Commands are timed and open-loop (e.g. takeoff = climb 1 m/s for 3 s). Tune speeds/durations at the top of `commands.py`.
-- Bare words match anywhere in the sentence ("that's all right" -> `right`). Fine for a scripted demo; say the commands cleanly.
+- Bare words match anywhere in the sentence ("that's all right" -> `right`).
 - Silence is skipped before Whisper (`SILENCE_RMS` in `config.py`) because Whisper can hallucinate text on silence.
 - The trail is drawn with Gazebo visual markers, so it only shows in the Gazebo GUI window.
-- Recording tip for the video: screen-record the GUI and Gazebo side by side (OBS); the banner turns red while you hold SPACE.
 
 ## Experimental: strict matcher
 `matcher_strict.py` only accepts complete, approved requests (work in progress). To try it:
