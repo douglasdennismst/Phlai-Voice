@@ -1,0 +1,17 @@
+# Python environment and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Runtime output (generated on every run)
+logs/
+output/
+recordings/
+maneuvers.png
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
