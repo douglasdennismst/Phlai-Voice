@@ -19,8 +19,8 @@ RotorPy has no drone-to-drone collisions or downwash, so they can pass through e
 Command sources (pick one):
   default        watch output/latest_command.json (written by app.py on every utterance)
   --ros          subscribe to /phlai/voice_command (std_msgs/String JSON), like the old adapter
-  --demo a,b,c   play named commands from commands.py back to back (no voice app needed);
-                 prefix with drone numbers to target them: takeoff,2:forward,1+3:land
+  --demo NAME    play a choreographed demo from demos.py, e.g. --demo showcase (no voice needed)
+  --demo a,b,c   or your own list: takeoff,1:star,2:heart,wait,1+3:land  (see parse_demo)
 
 Run it with the RotorPy venv:  .venv-rotorpy/bin/python3 rotorpy_sim.py
 Headless check (no window, faster than real time, saves a picture):
@@ -63,6 +63,7 @@ class Drone:
         from rotorpy.vehicles.multirotor import Multirotor
 
         self.number = number                       # 1-based, as spoken
+        self.start = np.array(start, dtype=float)
         self.color = COLORS[(number - 1) % len(COLORS)]
         self.params = quad_params
         self.state = self._ground_state(start)
@@ -91,9 +92,13 @@ class Drone:
             self._last_dot = None
         self.sequence, self.cmd_t0, self.cmd_name = sequence, t, name
 
-    def busy(self, t):
+    def free_at(self):
+        """Sim time when the current command ends (a hold command counts as ended at once)."""
         total = command_schedule.total_duration(self.sequence)
-        return total is not None and t - self.cmd_t0 < total
+        return self.cmd_t0 + (total or 0.0)
+
+    def busy(self, t):
+        return t < self.free_at()
 
     def step(self, t, dt):
         cmd = command_schedule.step_at(self.sequence, t - self.cmd_t0)
@@ -162,6 +167,8 @@ class RotorPySim:
         self.log = log
         self.t = 0.0                               # sim time, s
         self.commands = queue.Queue()
+        self.script = None                         # DemoScript, advanced inside step()
+        self.caption = ""                          # shown above the 3D view (demo act names)
         self._lock = threading.Lock()
 
     # ---------- commands ----------
@@ -203,8 +210,9 @@ class RotorPySim:
                  f"total {'until next command' if total is None else f'{total:.1f} s'}")
 
     def busy(self):
-        """True while any drone is still running a timed command (or one is waiting in the queue)."""
-        return any(d.busy(self.t) for d in self.drones) or not self.commands.empty()
+        """True while any drone is still running a timed command, one is queued, or a demo is playing."""
+        return (any(d.busy(self.t) for d in self.drones) or not self.commands.empty()
+                or (self.script is not None and not self.script.done))
 
     # ---------- physics ----------
     def step(self, dt=PHYSICS_DT):
@@ -213,6 +221,8 @@ class RotorPySim:
                 self._start_command(self.commands.get_nowait())
             except queue.Empty:
                 break
+        if self.script is not None:
+            self.script.update(self)
         with self._lock:
             for drone in self.drones:
                 drone.step(self.t, dt)
@@ -220,7 +230,8 @@ class RotorPySim:
 
     def snapshot(self):
         with self._lock:
-            return {"t": self.t, "drones": [d.snapshot() for d in self.drones]}
+            return {"t": self.t, "caption": self.caption,
+                    "drones": [d.snapshot() for d in self.drones]}
 
     # ---------- loops ----------
     def run_realtime(self, stop):
@@ -287,32 +298,118 @@ def subscribe_ros(sim, stop, topic=config.ROS_COMMAND_TOPIC):
         rclpy.shutdown()
 
 
-def demo_messages(items):
-    """["takeoff", "2:forward", "1+3:land"] -> command messages."""
+def parse_demo(spec):
+    """A demo name from demos.py, or a comma list of items, -> list of script items.
+
+    Items:  [drones:]command   run a command from commands.py ("takeoff", "2:star", "1+3:land");
+                               it starts as soon as ITS drones are free, so different drones overlap
+            wait               wait until every drone is free
+            +N                 pause the script N seconds (drones already flying carry on)
+            [drones:]home      fly back to the start spot at HOME_HEIGHT, facing forward again
+                               (straightens drones out after spirals and orbits)
+            # text             show text as the caption (act names)
+    A demo in demos.py may also contain ready-made messages:
+            {"target": [1], "command": "name", "params": {...}}
+    """
     from commands import COMMANDS
+    import demos
+    items = demos.DEMOS.get(spec.strip())
+    if items is None:
+        items = [i.strip() for i in spec.split(",") if i.strip()]
     by_name = {c.name: c for c in COMMANDS}
-    messages = []
+    script = []
     for item in items:
-        who, _, name = item.rpartition(":")
-        if name not in by_name:
-            sys.exit(f"Unknown command {name!r}. Known: {', '.join(sorted(by_name))}")
-        try:
-            target = "all" if who in ("", "all") else [int(n) for n in who.split("+")]
-        except ValueError:
-            sys.exit(f"Bad drone list {who!r} in {item!r}; use e.g. 2:forward or 1+3:land")
-        messages.append({"status": "accepted", "command": name, "target": target,
-                         "params": by_name[name].params})
-    return messages
+        if isinstance(item, dict):
+            script.append(("command", {"status": "accepted", "target": "all", **item}))
+            continue
+        if item.rpartition(":")[2] == "home":
+            who = item.rpartition(":")[0]
+            try:
+                target = "all" if who in ("", "all") else [int(n) for n in who.split("+")]
+            except ValueError:
+                sys.exit(f"Bad drone list {who!r} in {item!r}")
+            script.append(("home", target))
+            continue
+        if item == "wait":
+            script.append(("wait",))
+        elif item.startswith("#"):
+            script.append(("caption", item[1:].strip()))
+        elif item.startswith("+"):
+            try:
+                script.append(("pause", float(item[1:])))
+            except ValueError:
+                sys.exit(f"Bad pause {item!r}; use e.g. +2.5")
+        else:
+            who, _, name = item.rpartition(":")
+            if name not in by_name:
+                sys.exit(f"Unknown command or demo {name!r}. Demos: {', '.join(demos.DEMOS)}. "
+                         f"Commands: {', '.join(sorted(by_name))}")
+            try:
+                target = "all" if who in ("", "all") else [int(n) for n in who.split("+")]
+            except ValueError:
+                sys.exit(f"Bad drone list {who!r} in {item!r}; use e.g. 2:forward or 1+3:land")
+            script.append(("command", {"status": "accepted", "command": name, "target": target,
+                                       "params": by_name[name].params}))
+    return script
 
 
-def play_demo(sim, stop, messages, settle=1.0):
-    """Submit each message once the previous one has finished (plus `settle` s of hover)."""
-    for message in messages:
-        while sim.busy() and not stop.is_set():
-            time.sleep(0.05)
-        if stop.wait(settle):
-            return
-        sim.submit(message)
+HOME_HEIGHT = 3.0          # m; same as after takeoff
+
+
+def home_params(drone, speed=0.8, yaw_rate=0.8):
+    """Steps that turn a drone back to facing +x, then fly it to its start spot at HOME_HEIGHT.
+    Worked out from its setpoint, so it lands exactly on the spot it was asked to be at."""
+    yaw = (drone.ref_yaw + np.pi) % (2 * np.pi) - np.pi       # -pi..pi, shortest way round
+    steps = []
+    if abs(yaw) > 1e-3:
+        t = max(0.5, abs(yaw) / yaw_rate)
+        steps.append({"angular_z": -yaw / t, "duration": t})
+    delta = np.array([drone.start[0], drone.start[1], HOME_HEIGHT]) - drone.ref_pos
+    dist = float(np.linalg.norm(delta))
+    if dist > 1e-3:
+        t = max(0.5, dist / speed)
+        steps.append({"linear": list(delta / t), "duration": t})   # facing +x: body = world
+    return {"steps": steps or [{"duration": 0.1}]}
+
+
+class DemoScript:
+    """Plays parsed demo items on sim time. RotorPySim.step() calls update() every step."""
+
+    def __init__(self, items, settle=0.6):
+        self.items, self.i, self.settle = items, 0, settle
+        self.resume_at = 0.0                       # for +N pauses
+
+    @property
+    def done(self):
+        return self.i >= len(self.items)
+
+    def update(self, sim):
+        while not self.done:
+            item = self.items[self.i]
+            kind = item[0]
+            if sim.t < self.resume_at:
+                return
+            if kind == "pause":
+                self.resume_at = sim.t + item[1]
+            elif kind == "caption":
+                sim.caption = item[1]
+                sim.log(f"--- {item[1]} ---")
+            elif kind == "wait":
+                if any(sim.t < d.free_at() + self.settle for d in sim.drones):
+                    return
+            elif kind == "home":
+                drones = sim._targets(item[1])
+                if any(sim.t < d.free_at() + self.settle for d in drones):
+                    return
+                for d in drones:
+                    sim._start_command({"command": "home", "target": [d.number],
+                                        "params": home_params(d)})
+            else:
+                drones = sim._targets(item[1]["target"])
+                if any(sim.t < d.free_at() + self.settle for d in drones):
+                    return                         # its drones are still busy: try next step
+                sim._start_command(item[1])
+            self.i += 1
 
 
 # ============================== viewer ==============================
@@ -377,7 +474,8 @@ class Viewer:
             pen = " (pen)" if d["pen"] else ""
             lines.append(f"{d['number']}: {d['command'] or '-'}{pen}")
         _box(self.ax, points)
-        self.title.set_text("   ".join(lines) + f"\nt={snap['t']:5.1f}s")
+        caption = f"{snap['caption']}\n" if snap.get("caption") else ""
+        self.title.set_text(caption + "   ".join(lines) + f"\nt={snap['t']:5.1f}s")
 
     def run(self, stop, fps=20):
         from matplotlib.animation import FuncAnimation
@@ -400,7 +498,7 @@ def main(argv=None):
     src = ap.add_mutually_exclusive_group()
     src.add_argument("--ros", action="store_true", help="read commands from the ROS 2 topic")
     src.add_argument("--demo", metavar="CMD,CMD",
-                     help="play named commands from commands.py (e.g. takeoff,2:forward,1+3:land)")
+                     help="a demo from demos.py (e.g. showcase) or a list like takeoff,1:star,2:heart,wait,all:land")
     ap.add_argument("--file", type=Path, default=config.LATEST_JSON,
                     help="command file to watch (default: %(default)s)")
     ap.add_argument("--drones", type=int, default=config.DRONE_COUNT,
@@ -426,15 +524,12 @@ def main(argv=None):
     if args.headless:
         import matplotlib
         matplotlib.use("Agg")
-        messages = demo_messages(args.demo.split(","))
+        sim.script = DemoScript(parse_demo(args.demo))
         wall0 = time.monotonic()
-        for message in messages:
-            for _ in range(int(1.0 / PHYSICS_DT)):            # 1 s of hover between commands
-                sim.step()
-            sim.submit(message)
+        for _ in range(int(1.0 / PHYSICS_DT)):                # 1 s on the ground first
             sim.step()
-            while sim.busy():
-                sim.step()
+        while sim.busy():
+            sim.step()
         snap = sim.snapshot()
         sim.log(f"Done: {snap['t']:.1f} s simulated in {time.monotonic() - wall0:.1f} s wall")
         for d in snap["drones"]:
@@ -448,14 +543,17 @@ def main(argv=None):
             sim.log(f"Saved {args.save}")
         return
 
+    source = None
     if args.demo:
-        source = threading.Thread(target=play_demo, args=(sim, stop, demo_messages(args.demo.split(","))))
+        sim.script = DemoScript(parse_demo(args.demo))
+        sim.t = -1.0                               # 1 s on the ground before the demo starts
     elif args.ros:
         source = threading.Thread(target=subscribe_ros, args=(sim, stop))
     else:
         source = threading.Thread(target=watch_file, args=(sim, stop, args.file))
-    source.daemon = True
-    source.start()
+    if source is not None:
+        source.daemon = True
+        source.start()
     threading.Thread(target=sim.run_realtime, args=(stop,), daemon=True).start()
 
     viewer = Viewer(sim)

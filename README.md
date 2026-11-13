@@ -26,14 +26,16 @@ a pure-Python quadrotor simulator. The Gazebo version lives on `main`.
 | `launch.sh` | What the desktop icon runs: sets up on first use, then `run_demo.sh`. |
 | `run_demo.sh` | Launches the sim and the voice GUI in one go. |
 | `setup_linux.sh` | One-shot install of both Python environments + the desktop icon (safe to re-run). |
-| `make_launcher.sh` / `phlai_icon.svg` | Creates the "PHLAI RotorPy" Desktop/app-menu icon. |
+| `make_launcher.sh` / `phlai_icon.svg` | Creates the "PHLAI RotorPy" and "PHLAI Showcase" Desktop/app-menu icons. |
+| `demos.py` | Choreographed multi-drone demos (`--demo showcase`). |
 | `test_matcher.py` | Offline whitelist tests. |
 | `preview_maneuvers.py` | Plots every drawing maneuver to `maneuvers.png` (needs matplotlib). |
 | `matcher_strict.py` / `app_strict.py` / `test_safety_matcher.py` | Experimental strict matcher, its GUI, and its tests (see below). |
 
 ## One click
 Run `bash setup_linux.sh` once (or just `bash launch.sh`, which runs it for you). After that,
-double-click **PHLAI RotorPy** on the Desktop or open it from the app menu. A terminal opens and shows
+double-click **PHLAI RotorPy** on the Desktop or open it from the app menu (or **PHLAI Showcase**
+for the hands-free multi-drone demo). A terminal opens and shows
 progress, then the sim and voice windows appear. If something fails, the terminal stays open so you
 can read why. Moved the folder? Run `bash make_launcher.sh` again.
 
@@ -67,7 +69,7 @@ Manual (two terminals):
 
 **Test the sim without your voice:**
 
-    .venv-rotorpy/bin/python3 rotorpy_sim.py --demo takeoff,spell_phlai,land
+    .venv-rotorpy/bin/python3 rotorpy_sim.py --demo takeoff,wait,spell_phlai,wait,land
 
 Headless (no window, ~4x faster than real time, saves a picture of the result):
 
@@ -98,10 +100,29 @@ app and the sim read it. Each drone gets its own trail colour, and "clear trail"
 drones it is sent to. RotorPy simulates each drone on its own: there are no drone-to-drone
 collisions or downwash, so drones can fly through each other.
 
+### Showcase demo
+Double-click **PHLAI Showcase** (or `bash run_demo.sh --showcase`) for a 2-minute choreographed
+flight of all three drones. No microphone needed:
+
+1. Staggered takeoff and a nod from each drone
+2. Three drawings at once (heart, star, circle)
+3. Orbit, figure eight up high, and a climbing spiral
+4. Drone 2 spells MST above the others while they draw a triangle and a star
+5. All three line up and spell **PHLAI** together: drone 1 writes P H, drone 2 L A, drone 3 I
+6. A bow, then landing one by one
+
+The act names show above the 3D view. Demos live in [demos.py](demos.py) as plain lists like
+`"1:heart", "2:star", "wait", "all:land"`. A command starts as soon as its own drones are free, so
+commands for different drones overlap. `"wait"` waits for every drone, `"+2"` pauses the script for
+2 s, `"home"` flies drones back to their start spot (facing forward, 3 m up), and `"# text"`
+sets the caption. `team_word("PHLAI", [1, 1, 2, 2, 3])` splits any word across the drones. `bash run_demo.sh --demo phlai` plays just the PHLAI part (about 40 s),
+`--demo quick` plays a short check demo, and
+`--demo` also takes a list directly: `--demo takeoff,1:star,2:heart,wait,all:land`.
+
 Try targeting without your voice: `.venv/bin/python3 matcher.py` is the voice app's matcher
 (type phrases), and the sim's `--demo` takes drone prefixes:
 
-    .venv-rotorpy/bin/python3 rotorpy_sim.py --demo takeoff,1:letter_p,2:star,3:heart,1+3:land
+    .venv-rotorpy/bin/python3 rotorpy_sim.py --demo takeoff,1:letter_p,2:star,3:heart,wait,1+3:land
 
 The sim runs about 3x faster than real time with 3 drones on a typical laptop. If it falls behind,
 the sim log says so; use fewer drones.

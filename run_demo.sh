@@ -2,7 +2,9 @@
 # Launch the whole demo: RotorPy sim window + voice GUI. No ROS or Gazebo needed.
 #   bash run_demo.sh                    run everything
 #   bash run_demo.sh -strict            run test_safety_matcher.py first, then launch app_strict.py
-#   bash run_demo.sh --vehicle crazyflie    sim options (--vehicle, --ros) go to rotorpy_sim.py
+#   bash run_demo.sh --vehicle crazyflie    sim options (--vehicle, --drones, --ros) go to rotorpy_sim.py
+#   bash run_demo.sh --showcase         play the choreographed multi-drone demo (sim only, no voice)
+#   bash run_demo.sh --demo quick       play any demo from demos.py, or a list like takeoff,1:star,wait,all:land
 #   other args are passed to the voice app
 # The voice app writes every accepted command to output/latest_command.json; rotorpy_sim.py
 # watches that file. Closing the voice window (or Ctrl-C) stops the sim too. Logs are in ./logs/.
@@ -12,12 +14,15 @@ LOGS="$DIR/logs"
 mkdir -p "$LOGS"
 
 STRICT=0
+DEMO=""
 APP_ARGS=()
 SIM_ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     -strict|--strict) STRICT=1 ;;
-    --vehicle) SIM_ARGS+=("$1" "$2"); shift ;;
+    --vehicle|--drones) SIM_ARGS+=("$1" "$2"); shift ;;
+    --showcase) DEMO="showcase" ;;
+    --demo) DEMO="$2"; shift ;;
     --ros) SIM_ARGS+=("$1") ;;
     *) APP_ARGS+=("$1") ;;
   esac
@@ -31,6 +36,16 @@ APP="app.py"
 #   SIM_PY = .venv-rotorpy  -> RotorPy sim (rotorpy pins its own numpy/scipy/matplotlib)
 PY="$DIR/.venv/bin/python3"
 SIM_PY="$DIR/.venv-rotorpy/bin/python3"
+# Demo mode: just the sim window playing a script. No microphone or Whisper needed.
+if [ -n "$DEMO" ]; then
+  if ! "$SIM_PY" -c "import rotorpy, matplotlib, tkinter" 2>/dev/null; then
+    echo "The .venv-rotorpy isn't set up. Run setup_linux.sh first."; exit 1
+  fi
+  echo "Playing demo '$DEMO' (close the window to stop)"
+  cd "$DIR"
+  exec "$SIM_PY" rotorpy_sim.py --demo "$DEMO" "${SIM_ARGS[@]}"
+fi
+
 if [ ! -x "$PY" ] || [ ! -x "$SIM_PY" ]; then
   echo "Missing .venv or .venv-rotorpy. Run setup_linux.sh first."; exit 1
 fi
