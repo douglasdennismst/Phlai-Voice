@@ -4,16 +4,16 @@ The voice whitelist: the ONLY place spoken words are tied to commands.
 Each VoiceCommand has:
   name    - what gets published as "command"
   phrases - spoken phrases that trigger it (matched as whole words, case-insensitive)
-  params  - data handed to whatever ROS adapter consumes the command.
+  params  - data handed to the simulator (rotorpy_sim.py) or any other backend.
 
-The drone adapter understands two shapes of params (all velocities in the drone's BODY frame:
+The simulator understands two shapes of params (all velocities in the drone's BODY frame:
 x forward, y left, z up; yaw rad/s, positive = counter-clockwise = turn left):
 
   single move:  {"linear": [x, y, z], "angular_z": w, "duration": seconds}   (duration 0 = hold)
   sequence:     {"steps": [ {linear, angular_z, duration}, ... ]}             (played in order)
 
-To retarget this at a different ROS system, change/add entries here and write a small
-adapter node that understands your params. Nothing else needs to change.
+To retarget this at a different system, change/add entries here and write a small
+adapter that understands your params (command_schedule.py parses them). Nothing else needs to change.
 """
 import math
 from dataclasses import dataclass, field
@@ -45,7 +45,7 @@ class VoiceCommand:
 
 
 def _step(x=0.0, y=0.0, z=0.0, yaw=0.0, seconds=0.0, pen=None):
-    """pen=True leaves a trail in Gazebo while this step runs; False/None does not."""
+    """pen=True leaves a trail in the sim while this step runs; False/None does not."""
     step = {"linear": [round(x, 4), round(y, 4), round(z, 4)],
             "angular_z": round(yaw, 4), "duration": round(seconds, 4)}
     if pen is not None:
@@ -175,7 +175,7 @@ COMMANDS = [
     _move("down", ["down", "descend"], z=-SPEED),
     _move("turn_left", ["turn left", "rotate left", "yaw left"], yaw=YAW_RATE, seconds=TURN_SECONDS),
     _move("turn_right", ["turn right", "rotate right", "yaw right"], yaw=-YAW_RATE, seconds=TURN_SECONDS),
-    # wipes the Gazebo trail (and holds position)
+    # wipes the trail (and holds position)
     _seq("clear_trail", ["clear", "clear trail", "clear the trail", "erase"], [_step(seconds=0.0)], clear=True),
 
     # --- letters (say "letter p", etc.; spelling variants are best-effort for speech-to-text) ---

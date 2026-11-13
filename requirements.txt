@@ -1,6 +1,6 @@
 # Voice app (.venv). Install with:  .venv/bin/pip install -r requirements.txt
-# ROS 2 Jazzy, Gazebo Harmonic and their Python bindings come from apt (see setup_linux.sh),
-# not pip. drone_adapter.py runs on the system Python and needs nothing from this file.
+# The RotorPy simulator has its own venv and requirements-rotorpy.txt;
+# it needs nothing from this file.
 faster-whisper
 sounddevice
 numpy

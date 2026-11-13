@@ -1,0 +1,5 @@
+# RotorPy simulator (rotorpy_sim.py). Install into its own venv, NOT the voice app's .venv:
+#   python3 -m venv .venv-rotorpy && .venv-rotorpy/bin/pip install -r requirements-rotorpy.txt
+# Do not use --system-site-packages: Ubuntu's matplotlib is built for numpy 1.x and breaks here.
+# The live window uses Tk (sudo apt install python3-tk).
+rotorpy==3.0.0

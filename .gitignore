@@ -1,5 +1,6 @@
 # Python environment and caches
 .venv/
+.venv-rotorpy/
 venv/
 __pycache__/
 *.py[cod]
