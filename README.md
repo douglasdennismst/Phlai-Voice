@@ -16,7 +16,7 @@ a pure-Python quadrotor simulator. The Gazebo version lives on `main`.
 | File | Job |
 |---|---|
 | `commands.py` | **The whitelist.** Spoken phrases -> command name + params. Edit this to add commands. |
-| `config.py` | Paths, mic, Whisper model/device, (optional) ROS topic. |
+| `config.py` | Paths, mic, Whisper model/device, number of drones, (optional) ROS topic. |
 | `matcher.py` | Whitelist matching (pure Python). `python3 matcher.py` lets you type phrases to test. |
 | `recorder.py` / `transcriber.py` | Mic capture / Whisper (faster-whisper by default). |
 | `sinks.py` | Output: JSON files (always) + ROS 2 publisher (only if rclpy is available; not needed here). |
@@ -73,8 +73,38 @@ Headless (no window, ~4x faster than real time, saves a picture of the result):
 
     .venv-rotorpy/bin/python3 rotorpy_sim.py --headless --demo takeoff,up,star --save star.png
 
-In the 3D view: the dark X is the drone (red line = nose), the orange + is the setpoint it is
-tracking, grey is the recent flight path, cyan dots are the pen trail. Drag to rotate.
+In the 3D view: each dark X is a drone with its number under it, the coloured line from its centre
+is its nose, the + is the setpoint it is tracking, the faint line is its recent path and the dots are
+its pen trail. Drag to rotate.
+
+## Several drones
+Three drones start side by side, 3 m apart (drone 1 on the left as seen from behind). Name the
+drones at the start or end of what you say:
+
+| Say | Who flies it |
+|---|---|
+| "take off" | every drone (no drone named = all) |
+| "drone two, forward" | drone 2 |
+| "drones one and three, land" / "drone 1 2 up" | drones 1 and 3 / 1 and 2 |
+| "all drones spell fly" / "everyone hover" | every drone |
+| "drone five, land" | nobody: rejected, because there is no drone 5 |
+
+Whisper often writes "drone to" for "drone two" or "drone won" for "drone one". These sound-alikes
+are understood right after the word "drone" only, so "drone one to the left" still means drone 1.
+The voice window shows who a command went to, e.g. `→ FORWARD (DRONE 2)`.
+
+Change the number of drones with `DRONE_COUNT` (and `DRONE_SPACING`) in `config.py`. Both the voice
+app and the sim read it. Each drone gets its own trail colour, and "clear trail" only clears the
+drones it is sent to. RotorPy simulates each drone on its own: there are no drone-to-drone
+collisions or downwash, so drones can fly through each other.
+
+Try targeting without your voice: `.venv/bin/python3 matcher.py` is the voice app's matcher
+(type phrases), and the sim's `--demo` takes drone prefixes:
+
+    .venv-rotorpy/bin/python3 rotorpy_sim.py --demo takeoff,1:letter_p,2:star,3:heart,1+3:land
+
+The sim runs about 3x faster than real time with 3 drones on a typical laptop. If it falls behind,
+the sim log says so; use fewer drones.
 
 ### Still want ROS?
 `rotorpy_sim.py --ros` subscribes to `/phlai/voice_command` instead of watching the file (needs ROS 2

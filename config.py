@@ -26,6 +26,11 @@ WHISPER_COMPUTE_TYPE = "int8"
 WHISPER_BEAM_SIZE = 1
 WHISPER_CPU_THREADS = 0
 
+# Drones. Say "drone two, forward", "drones one and three, take off" or "all drones, land".
+# A command with no drone named goes to every drone. Naming a drone above DRONE_COUNT is rejected.
+DRONE_COUNT = 3
+DRONE_SPACING = 3.0          # m between drones' start positions (side by side, along y)
+
 # ROS 2 output (ignored automatically if rclpy is not importable)
 ROS_ENABLED = True
 ROS_NODE_NAME = "phlai_voice"

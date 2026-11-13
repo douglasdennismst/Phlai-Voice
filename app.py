@@ -16,7 +16,7 @@ import numpy as np
 
 import config
 from commands import COMMANDS
-from matcher import make_message, match_command
+from matcher import make_message, match
 from recorder import Recorder
 from sinks import build_sinks
 from transcriber import Transcriber
@@ -110,9 +110,12 @@ class App:
         heard = message["transcript"] or "(nothing heard)"
         self.heard_var.set(f'Heard: "{heard}"')
         if message["status"] == "accepted":
-            self.cmd_var.set(f"\u2192 {message['command'].upper()}")
+            target = message.get("target", "all")
+            who = ("ALL DRONES" if target == "all"
+                   else ("DRONE " if len(target) == 1 else "DRONES ") + " + ".join(map(str, target)))
+            self.cmd_var.set(f"\u2192 {message['command'].upper()}  ({who})")
         else:
-            self.cmd_var.set("No whitelisted command")
+            self.cmd_var.set(message.get("reason") or "No whitelisted command")
 
     # ---------- spacebar handling ----------
     def _on_space_press(self, event):
@@ -178,8 +181,8 @@ class App:
             rms = float(np.sqrt(np.mean(np.square(audio))))
             self._save_wav(audio)
             transcript = "" if rms < config.SILENCE_RMS else self.transcriber.transcribe(audio)
-            command, normalized = match_command(transcript)
-            message = make_message(transcript, normalized, command, rms)
+            command, target, normalized, error = match(transcript)
+            message = make_message(transcript, normalized, command, rms, target, error)
             for sink in self.sinks:
                 try:
                     sink.publish(message)
